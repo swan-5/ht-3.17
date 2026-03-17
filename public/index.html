@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HappyToilet 🚽</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Raleway:wght@800;900&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --primary: #666699;
+      --dark: #333366;
+      --light-purple: #9999cc;
+      --pale: #eeeeff;
+      --white: #ffffff;
+      --shadow: 0 4px 20px rgba(51,51,102,0.15);
+      --radius: 16px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: #f4f4f8;
+      color: #222244;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      height: 54px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    }
+    .logo {
+      font-family: 'Raleway', sans-serif;
+      font-weight: 900;
+      font-size: 1.25rem;
+      color: var(--white);
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--light-purple); }
+    .header-btns { display: flex; gap: 8px; }
+    .header-btns button {
+      background: transparent;
+      border: 1.5px solid rgba(255,255,255,0.4);
+      color: var(--white);
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .header-btns button:hover { background: var(--primary); border-color: var(--primary); }
+
+    /* ── MAP ── */
+    #map-section { padding-top: 54px; }
+    #map { width: 100%; height: calc(55vh); }
+
+    /* ── LOADING ── */
+    .loading-bar {
+      background: var(--dark);
+      color: white;
+      text-align: center;
+      font-size: 0.82rem;
+      padding: 8px;
+      display: none;
+    }
+    .loading-bar.show { display: block; }
+
+    /* ── BOTTOM CONTENT ── */
+    .content { padding: 0 0 100px; }
+
+    .nearby-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 8px;
+    }
+    .nearby-header h2 { font-size: 1rem; font-weight: 700; color: var(--dark); }
+    .nearby-header span { font-size: 0.78rem; color: var(--primary); }
+
+    .nearby-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 4px 16px 12px;
+      scrollbar-width: none;
+    }
+    .nearby-scroll::-webkit-scrollbar { display: none; }
+
+    .nearby-card {
+      flex: 0 0 220px;
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: 2px solid transparent;
+    }
+    .nearby-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(51,51,102,0.2); }
+    .nearby-card.selected { border-color: var(--primary); }
+    .nearby-card-title { font-size: 0.85rem; font-weight: 700; color: var(--dark); margin-bottom: 4px; line-height: 1.3; }
+    .nearby-card-meta { font-size: 0.75rem; color: #888; margin-bottom: 4px; }
+    .nearby-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+    .stars-small { color: #f5a623; font-size: 0.75rem; }
+    .dist-badge { background: var(--pale); color: var(--dark); font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 10px; }
+    .route-btn { background: var(--primary); color: white; border: none; font-family: 'Noto Sans KR', sans-serif; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 10px; cursor: pointer; }
+
+    /* ── PANEL ── */
+    .panel-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 2000;
+      align-items: flex-end;
+    }
+    .panel-overlay.open { display: flex; }
+    .panel {
+      background: var(--white);
+      border-radius: 24px 24px 0 0;
+      width: 100%;
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 0 0 40px;
+      animation: slideUp 0.3s ease;
+      position: relative;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .panel-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 12px auto 0; }
+    .panel-header { padding: 16px 20px; border-bottom: 1px solid #eee; }
+    .panel-title { font-size: 1.1rem; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
+    .panel-address { font-size: 0.8rem; color: #888; }
+    .panel-rating-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .rating-big { font-size: 1.5rem; font-weight: 900; color: var(--dark); }
+    .stars-big { color: #f5a623; font-size: 1.1rem; }
+    .review-count { font-size: 0.8rem; color: #aaa; }
+    .panel-info { display: flex; gap: 8px; padding: 12px 20px; flex-wrap: wrap; }
+    .info-chip { background: var(--pale); color: var(--dark); font-size: 0.75rem; font-weight: 500; padding: 5px 12px; border-radius: 12px; }
+    .panel-section { padding: 12px 20px; }
+    .panel-section h3 { font-size: 0.9rem; font-weight: 700; color: var(--dark); margin-bottom: 10px; }
+    .review-item { background: #f8f8fc; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+    .review-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .reviewer { font-size: 0.8rem; font-weight: 700; color: var(--dark); }
+    .review-date { font-size: 0.72rem; color: #bbb; }
+    .review-stars { color: #f5a623; font-size: 0.85rem; }
+    .review-cleanliness { font-size: 0.75rem; color: var(--primary); margin-bottom: 4px; }
+    .review-text { font-size: 0.82rem; color: #444; line-height: 1.5; }
+    .write-review-btn { display: block; width: calc(100% - 40px); margin: 8px 20px 0; background: var(--dark); color: white; border: none; font-family: 'Noto Sans KR', sans-serif; font-size: 0.95rem; font-weight: 700; padding: 14px; border-radius: var(--radius); cursor: pointer; transition: background 0.2s; }
+    .write-review-btn:hover { background: var(--primary); }
+    .close-panel { position: absolute; top: 16px; right: 20px; background: #eee; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+    /* ── REVIEW FORM ── */
+    .form-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; align-items: flex-end; }
+    .form-overlay.open { display: flex; }
+    .form-panel { background: var(--white); border-radius: 24px 24px 0 0; width: 100%; max-height: 90vh; overflow-y: auto; padding: 0 0 40px; animation: slideUp 0.3s ease; }
+    .form-inner { padding: 0 20px; }
+    .form-inner h3 { font-size: 1rem; font-weight: 700; color: var(--dark); margin-bottom: 16px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { font-size: 0.82rem; font-weight: 700; color: var(--dark); display: block; margin-bottom: 6px; }
+    .star-picker { display: flex; gap: 6px; }
+    .star-picker span { font-size: 1.8rem; cursor: pointer; filter: grayscale(1); transition: filter 0.15s, transform 0.15s; }
+    .star-picker span.lit { filter: grayscale(0); transform: scale(1.1); }
+    .clean-slider { display: flex; gap: 6px; }
+    .clean-btn { flex: 1; padding: 8px 0; border: 2px solid #ddd; border-radius: 10px; background: white; font-family: 'Noto Sans KR', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.15s; color: #aaa; }
+    .clean-btn.selected { border-color: var(--primary); background: var(--pale); color: var(--dark); }
+    .form-group textarea { width: 100%; border: 2px solid #eee; border-radius: 12px; padding: 10px 12px; font-family: 'Noto Sans KR', sans-serif; font-size: 0.85rem; resize: none; outline: none; transition: border-color 0.2s; }
+    .form-group textarea:focus { border-color: var(--primary); }
+    .submit-btn { width: 100%; background: var(--primary); color: white; border: none; font-family: 'Noto Sans KR', sans-serif; font-size: 0.95rem; font-weight: 700; padding: 14px; border-radius: var(--radius); cursor: pointer; transition: background 0.2s; margin-top: 4px; }
+    .submit-btn:hover { background: var(--dark); }
+
+    /* ── MY PAGE ── */
+    .mypage-overlay { display: none; position: fixed; inset: 0; background: var(--white); z-index: 4000; flex-direction: column; }
+    .mypage-overlay.open { display: flex; }
+    .mypage-header { background: var(--dark); color: white; padding: 54px 20px 20px; position: relative; }
+    .mypage-header h2 { font-size: 1.2rem; font-weight: 700; }
+    .mypage-header p { font-size: 0.82rem; opacity: 0.7; margin-top: 4px; }
+    .mypage-back { position: absolute; top: 14px; left: 16px; background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer; }
+    .mypage-content { flex: 1; overflow-y: auto; padding: 16px; }
+    .mypage-empty { text-align: center; padding: 60px 20px; color: #aaa; font-size: 0.9rem; }
+    .mypage-review-card { background: white; border-radius: var(--radius); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); }
+    .mypage-review-card .card-title { font-size: 0.9rem; font-weight: 700; color: var(--dark); }
+    .mypage-review-card .card-meta { font-size: 0.75rem; color: #aaa; margin: 4px 0 6px; }
+    .mypage-review-card .card-text { font-size: 0.82rem; color: #555; }
+
+    /* ── TOAST ── */
+    .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--dark); color: white; padding: 10px 20px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; opacity: 0; transition: all 0.3s; z-index: 9999; pointer-events: none; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; border-top: 1px solid #eee; z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.08); }
+    .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 8px 0 10px; cursor: pointer; transition: color 0.2s; color: #aaa; font-size: 0.68rem; font-weight: 500; gap: 2px; border: none; background: none; font-family: 'Noto Sans KR', sans-serif; }
+    .nav-item .icon { font-size: 1.3rem; }
+    .nav-item.active { color: var(--primary); }
+
+    .locate-btn { position: absolute; right: 12px; bottom: 12px; z-index: 999; background: white; border: none; border-radius: 12px; width: 40px; height: 40px; box-shadow: var(--shadow); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Happy<span>Toilet</span> 🚽</div>
+  <div class="header-btns">
+    <button onclick="showToast('로그인 기능은 준비 중이에요!')">로그인</button>
+    <button onclick="openMyPage()">마이페이지</button>
+  </div>
+</header>
+
+<div class="loading-bar" id="loading-bar">🔄 서울시 화장실 데이터 불러오는 중...</div>
+
+<div id="map-section">
+  <div style="position:relative">
+    <div id="map"></div>
+    <button class="locate-btn" onclick="locateMe()" title="내 위치">📍</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="nearby-header">
+    <h2>🚶 가까운 화장실</h2>
+    <span id="nearby-label">불러오는 중...</span>
+  </div>
+  <div class="nearby-scroll" id="nearby-scroll">
+    <div style="color:#aaa;font-size:0.85rem;padding:20px">데이터 로딩 중...</div>
+  </div>
+</div>
+
+<!-- TOILET DETAIL PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanelOnBg(event)">
+  <div class="panel" id="detail-panel">
+    <div class="panel-handle"></div>
+    <button class="close-panel" onclick="closePanel()">✕</button>
+    <div class="panel-header">
+      <div class="panel-title" id="p-title"></div>
+      <div class="panel-address" id="p-address"></div>
+      <div class="panel-rating-row">
+        <div class="rating-big" id="p-rating">-</div>
+        <div class="stars-big" id="p-stars"></div>
+        <div class="review-count" id="p-count"></div>
+      </div>
+    </div>
+    <div class="panel-info" id="p-chips"></div>
+    <div class="panel-section">
+      <h3>💬 리뷰</h3>
+      <div id="p-reviews"></div>
+    </div>
+    <button class="write-review-btn" onclick="openReviewForm()">✏️ 리뷰 작성하기</button>
+  </div>
+</div>
+
+<!-- REVIEW FORM -->
+<div class="form-overlay" id="form-overlay" onclick="closeFormOnBg(event)">
+  <div class="form-panel">
+    <div class="panel-handle"></div>
+    <div class="form-inner">
+      <h3 id="form-title">리뷰 작성</h3>
+      <div class="form-group">
+        <label>⭐ 별점</label>
+        <div class="star-picker" id="star-picker">
+          <span onclick="setStar(1)">⭐</span>
+          <span onclick="setStar(2)">⭐</span>
+          <span onclick="setStar(3)">⭐</span>
+          <span onclick="setStar(4)">⭐</span>
+          <span onclick="setStar(5)">⭐</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>🧹 청결도 (1~5)</label>
+        <div class="clean-slider" id="clean-slider">
+          <button class="clean-btn" onclick="setClean(1)">1</button>
+          <button class="clean-btn" onclick="setClean(2)">2</button>
+          <button class="clean-btn" onclick="setClean(3)">3</button>
+          <button class="clean-btn" onclick="setClean(4)">4</button>
+          <button class="clean-btn" onclick="setClean(5)">5</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>📝 특이사항</label>
+        <textarea id="review-text" rows="4" placeholder="이 화장실에 대해 알려주세요 (시설 상태, 접근성, 비밀번호 필요 여부 등)"></textarea>
+      </div>
+      <button class="submit-btn" onclick="submitReview()">리뷰 등록하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- MY PAGE -->
+<div class="mypage-overlay" id="mypage-overlay">
+  <div class="mypage-header">
+    <button class="mypage-back" onclick="closeMyPage()">←</button>
+    <h2>마이페이지</h2>
+    <p>내가 작성한 리뷰 목록</p>
+  </div>
+  <div class="mypage-content" id="mypage-content"></div>
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-item active" onclick="scrollToMap()"><span class="icon">🗺️</span>지도</button>
+  <button class="nav-item" onclick="scrollToNearby()"><span class="icon">📍</span>가까운 곳</button>
+  <button class="nav-item" onclick="openMyPage()"><span class="icon">👤</span>마이페이지</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────
+// 로컬: http://localhost:3000/api/toilets
+// 배포 후: https://your-app.onrender.com/api/toilets
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:3000'
+  : ''; // Render 배포 시 같은 도메인이면 빈 문자열
+
+// ─── STATE ───────────────────────────────────────────────
+let toilets = [];
+let myLocation = { lat: 37.5665, lng: 126.9780 };
+let selectedToilet = null;
+let selectedStar = 0;
+let selectedClean = 0;
+let myReviews = JSON.parse(localStorage.getItem('myReviews') || '[]');
+let map, userMarker, routeLine;
+
+// ─── MAP INIT ────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([myLocation.lat, myLocation.lng], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+  locateMe();
+  fetchToilets();
+}
+
+// ─── FETCH TOILETS ───────────────────────────────────────
+async function fetchToilets() {
+  document.getElementById('loading-bar').classList.add('show');
+  try {
+    // 1~1000개 먼저, 필요시 페이징 추가 가능
+    const res = await fetch(`${API_BASE}/api/toilets?start=1&end=1000`);
+    const data = await res.json();
+    toilets = data.toilets || [];
+    document.getElementById('nearby-label').textContent = `서울시 ${data.total?.toLocaleString()}개`;
+    addMarkersToMap();
+    renderNearby();
+    showToast(`🚽 화장실 ${toilets.length}개 로드 완료!`);
+  } catch (e) {
+    console.error(e);
+    showToast('데이터 로드 실패. 서버를 확인해주세요.');
+    document.getElementById('nearby-label').textContent = '로드 실패';
+  } finally {
+    document.getElementById('loading-bar').classList.remove('show');
+  }
+}
+
+// ─── MAP MARKERS ─────────────────────────────────────────
+function addMarkersToMap() {
+  toilets.forEach(t => {
+    if (!t.lat || !t.lng) return;
+    const avg = getAvgRating(t);
+    const icon = L.divIcon({
+      html: `<div style="background:${avg >= 4 ? '#666699' : '#333366'};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)">🚽</div>`,
+      className: '', iconSize: [26, 26], iconAnchor: [13, 13]
+    });
+    L.marker([t.lat, t.lng], { icon })
+      .addTo(map)
+      .on('click', () => openPanel(t.id));
+  });
+}
+
+// ─── LOCATION ────────────────────────────────────────────
+function locateMe() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    myLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (userMarker) map.removeLayer(userMarker);
+    const userIcon = L.divIcon({
+      html: `<div style="background:#333366;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 4px rgba(51,51,102,0.3)"></div>`,
+      className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+    });
+    userMarker = L.marker([myLocation.lat, myLocation.lng], { icon: userIcon }).addTo(map);
+    map.setView([myLocation.lat, myLocation.lng], 16);
+    renderNearby();
+    showToast('📍 내 위치를 찾았어요!');
+  }, () => {
+    showToast('위치 권한 필요. 서울 시청 기준으로 표시합니다.');
+  });
+}
+
+// ─── DISTANCE ────────────────────────────────────────────
+function getDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getAvgRating(t) {
+  const all = [...(t.reviews || []), ...myReviews.filter(r => r.toiletId === t.id)];
+  if (!all.length) return 0;
+  return all.reduce((s, r) => s + r.star, 0) / all.length;
+}
+
+function starsHtml(n) {
+  const full = Math.round(n);
+  return '⭐'.repeat(full) + '☆'.repeat(5 - full);
+}
+
+// ─── NEARBY CARDS ────────────────────────────────────────
+function renderNearby() {
+  if (!toilets.length) return;
+  const sorted = [...toilets]
+    .filter(t => t.lat && t.lng)
+    .map(t => ({ ...t, dist: getDistance(myLocation.lat, myLocation.lng, t.lat, t.lng) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 20); // 가장 가까운 20개만 카드로 표시
+
+  const scroll = document.getElementById('nearby-scroll');
+  scroll.innerHTML = sorted.map(t => {
+    const avg = getAvgRating(t);
+    const distStr = t.dist < 1000 ? `${Math.round(t.dist)}m` : `${(t.dist/1000).toFixed(1)}km`;
+    return `
+      <div class="nearby-card" onclick="openPanel('${t.id}')">
+        <div class="nearby-card-title">${t.name}</div>
+        <div class="nearby-card-meta">${t.address || '주소 정보 없음'}</div>
+        <div class="nearby-card-meta">🕐 ${t.open}</div>
+        <div class="nearby-card-footer">
+          <div>
+            <span class="stars-small">${avg > 0 ? starsHtml(avg) : '리뷰 없음'}</span>
+            ${avg > 0 ? `<span style="font-size:0.72rem;color:#888"> ${avg.toFixed(1)}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="dist-badge">${distStr}</span>
+            <button class="route-btn" onclick="event.stopPropagation();showRoute('${t.id}')">경로</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── ROUTE ───────────────────────────────────────────────
+function showRoute(id) {
+  const t = toilets.find(x => String(x.id) === String(id));
+  if (!t) return;
+  if (routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline([[myLocation.lat, myLocation.lng], [t.lat, t.lng]], {
+    color: '#333366', weight: 4, dashArray: '8 6', opacity: 0.8
+  }).addTo(map);
+  map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+  showToast(`📍 ${t.name}까지 경로 표시 중`);
+  document.getElementById('map-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ─── PANEL ───────────────────────────────────────────────
+function openPanel(id) {
+  selectedToilet = toilets.find(t => String(t.id) === String(id));
+  if (!selectedToilet) return;
+  const t = selectedToilet;
+  const myR = myReviews.filter(r => String(r.toiletId) === String(t.id));
+  const allReviews = [...(t.reviews || []), ...myR.map(r => ({ ...r, user: '나 (내 리뷰)' }))];
+  const avg = getAvgRating(t);
+
+  document.getElementById('p-title').textContent = t.name;
+  document.getElementById('p-address').textContent = `📍 ${t.address || '주소 정보 없음'}`;
+  document.getElementById('p-rating').textContent = avg > 0 ? avg.toFixed(1) : '-';
+  document.getElementById('p-stars').textContent = avg > 0 ? starsHtml(avg) : '';
+  document.getElementById('p-count').textContent = `리뷰 ${allReviews.length}개`;
+
+  const chips = [`🕐 ${t.open}`];
+  if (t.male) chips.push('🚹 남성');
+  if (t.female) chips.push('🚺 여성');
+  if (t.disabled) chips.push('♿ 장애인');
+  document.getElementById('p-chips').innerHTML = chips.map(c => `<span class="info-chip">${c}</span>`).join('');
+
+  document.getElementById('p-reviews').innerHTML = allReviews.length === 0
+    ? `<p style="color:#bbb;font-size:0.85rem;text-align:center;padding:16px 0">아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!</p>`
+    : allReviews.map(r => `
+        <div class="review-item">
+          <div class="review-item-header">
+            <span class="reviewer">${r.user}</span>
+            <span class="review-date">${r.date}</span>
+          </div>
+          <div class="review-stars">${starsHtml(r.star)} ${r.star}.0</div>
+          <div class="review-cleanliness">청결도: ${'🟩'.repeat(r.clean)}${'⬜'.repeat(5-r.clean)} ${r.clean}/5</div>
+          ${r.text ? `<div class="review-text">${r.text}</div>` : ''}
+        </div>`).join('');
+
+  document.getElementById('form-title').textContent = `${t.name} 리뷰`;
+  document.getElementById('panel-overlay').classList.add('open');
+}
+
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); }
+function closePanelOnBg(e) { if (e.target === document.getElementById('panel-overlay')) closePanel(); }
+
+// ─── REVIEW FORM ─────────────────────────────────────────
+function openReviewForm() {
+  selectedStar = 0; selectedClean = 0;
+  document.getElementById('review-text').value = '';
+  document.querySelectorAll('.star-picker span').forEach(s => s.classList.remove('lit'));
+  document.querySelectorAll('.clean-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('form-overlay').classList.add('open');
+}
+function closeFormOnBg(e) { if (e.target === document.getElementById('form-overlay')) document.getElementById('form-overlay').classList.remove('open'); }
+function setStar(n) { selectedStar = n; document.querySelectorAll('.star-picker span').forEach((s, i) => s.classList.toggle('lit', i < n)); }
+function setClean(n) { selectedClean = n; document.querySelectorAll('.clean-btn').forEach((b, i) => b.classList.toggle('selected', i < n)); }
+
+function submitReview() {
+  if (!selectedStar) return showToast('별점을 선택해주세요!');
+  if (!selectedClean) return showToast('청결도를 선택해주세요!');
+  const review = {
+    toiletId: selectedToilet.id,
+    toiletName: selectedToilet.name,
+    star: selectedStar, clean: selectedClean,
+    text: document.getElementById('review-text').value.trim(),
+    date: new Date().toISOString().split('T')[0],
+    user: '나 (내 리뷰)'
+  };
+  myReviews.push(review);
+  localStorage.setItem('myReviews', JSON.stringify(myReviews));
+  document.getElementById('form-overlay').classList.remove('open');
+  showToast('리뷰가 등록되었어요! 🎉');
+  openPanel(selectedToilet.id);
+}
+
+// ─── MY PAGE ─────────────────────────────────────────────
+function openMyPage() {
+  const content = document.getElementById('mypage-content');
+  content.innerHTML = myReviews.length === 0
+    ? `<div class="mypage-empty">아직 작성한 리뷰가 없어요<br><br>🚽 화장실을 방문하고 첫 리뷰를 남겨보세요!</div>`
+    : myReviews.slice().reverse().map(r => `
+        <div class="mypage-review-card">
+          <div class="card-title">${r.toiletName}</div>
+          <div class="card-meta">${r.date} · ⭐ ${r.star}.0 · 청결도 ${r.clean}/5</div>
+          <div class="card-text">${r.text || '특이사항 없음'}</div>
+        </div>`).join('');
+  document.getElementById('mypage-overlay').classList.add('open');
+}
+function closeMyPage() { document.getElementById('mypage-overlay').classList.remove('open'); }
+
+// ─── TOAST ───────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function scrollToMap() { document.getElementById('map-section').scrollIntoView({ behavior: 'smooth' }); }
+function scrollToNearby() { document.getElementById('nearby-scroll').scrollIntoView({ behavior: 'smooth' }); }
+
+document.addEventListener('DOMContentLoaded', initMap);
+</script>
+</body>
+</html>
